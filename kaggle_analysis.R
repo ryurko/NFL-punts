@@ -1,4 +1,6 @@
 library(dplyr)
+library(qdapRegex)
+library(stringr)
 
 player_play_punts <- read.csv("play_player_role_data.csv")
 injuries <- read.csv("video_review.csv")
@@ -108,3 +110,32 @@ glm.plot <- data.frame(d=distance, prob = 100*predict(dsidinj.mod,newdata=data.f
 
 
 ggplot(glm.plot,aes(d,prob))+geom_line(color="blue")+geom_errorbar(aes(ymin=prob-se, ymax=prob+se), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ylab("Concussion Incident Probability of a Returned Punt(%)") + xlab("Distance from the closest sideline (yards)")
+
+
+#### Find what is the distribution of the punt return yardage (including fair catches, out-of-bounds etc.) -- we basically want to see currently what is the distribution of the yardage gained by returning a punt. While the location of the line of scrimmage is important here (e.g., punting to a short field gives lower chances of getting a good return), we just care for the "average" case.  in 1:dim(punts_data)[1]){This can be a support for the 5-yards rule we propose
+### NOTE: We do not account for any penalty that can push the line of scrimmage of the upcoming drive back
+
+return_yardage <- c()
+
+for (i in 1:dim(punts_data)[1]){
+
+	if (i %!in% ind){
+		if (str_detect(punts_data[i,]$PlayDescription,"for no gain")){
+			return_yardage <- append(return_yardage,0)
+		}else{
+			if (str_detect(punts_data[i,]$PlayDescription,"for \\d+ yards")){
+				y = as.numeric(rm_between(punts_data[i,]$PlayDescription,"\\sfor\\s ","\\syards",extract=TRUE)[[1]][1])
+				#y = as.numeric(sub(".*for *(.*?) *yards.*", "\\1", punts_data[i,]$PlayDescription))
+				return_yardage <- append(return_yardage,y)
+			}
+		}
+	}
+
+}
+
+
+return_yardage_all <- c(return_yardage,rep(0,length(ind)))
+
+return_yardage_all.df = data.frame(yrds = return_yardage_all)
+
+ggplot(return_yardage_all.df, aes(x=yrds)) + geom_histogram(color="black", fill="white",binwidth=2) + geom_vline(aes(xintercept=mean(yrds,na.rm=T)),color="blue", linetype="dashed", size=1) + theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ ylab("# of punts") + xlab("Return yardage")
