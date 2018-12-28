@@ -23,7 +23,7 @@ tback_punts = length(which(grepl("Touchback",punts_data$PlayDescription)))
 downed_punts = length(which(grepl("downed",punts_data$PlayDescription)))
 
 injuries_data = read.csv("video_footage-injury.csv")
-
+injuries_data$key = paste0(injuries_data$gamekey,"-",injuries_data$playid)
 injuries_data$PlayDescription= as.character(injuries_data$PlayDescription)
 
 fc_injury = length(which(grepl("fair catch",injuries_data$PlayDescription)))
@@ -31,7 +31,7 @@ oob_injury = length(which(grepl("out of bounds",injuries_data$PlayDescription)))
 tback_injury = length(which(grepl("Touchback",injuries_data$PlayDescription)))
 downed_injury = length(which(grepl("downed",injuries_data$PlayDescription)))
 
-sprintf("================Injury rates================")
+sprintf("================Concussion rates================")
 sprintf("Fair Catch: %f%%",100*(fc_injury/fc_punts))
 sprintf("Out-of-bounds: %f%%",100*(oob_injury/oob_punts))
 sprintf("Touchbacks: %f%%",100*(tback_injury/tback_punts))
@@ -139,3 +139,51 @@ return_yardage_all <- c(return_yardage,rep(0,length(ind)))
 return_yardage_all.df = data.frame(yrds = return_yardage_all)
 
 ggplot(return_yardage_all.df, aes(x=yrds)) + geom_histogram(color="black", fill="white",binwidth=2) + geom_vline(aes(xintercept=mean(yrds,na.rm=T)),color="blue", linetype="dashed", size=1) + theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ ylab("# of punts") + xlab("Return yardage")
+
+### One of the possible "side-effects" is that a punt returner might try to catch on the fly more punts for a fair catch that other wise he would have let land and downed by the covering team. This might lead to more muffed punts so we need to examine what is the rate of concussions in muffed punts.
+
+muffed_punts = length(which(grepl("MUFFS",punts_data$PlayDescription)))
+muffed_injury = length(which(grepl("MUFFS",injuries_data$PlayDescription)))
+muffed_rate.lower = c(prop.test(x=muffed_injury,n=muffed_punts)$conf.int[1])
+muffed_rate.upper = c(prop.test(x=muffed_injury,n=muffed_punts)$conf.int[2])
+
+sprintf("================Concussion rates================")
+sprintf("Muffed Punts: %f%%",100*(muffed_injury/muffed_punts))
+sprintf("Muffed Punts 95%% CI: [%f%%, %f%%]",100*muffed_rate.lower,100*muffed_rate.upper)
+
+# but some muffed punts were signaled for fair catch and some were attempted to be returned. The NGS have annotations for the fair catch signal so we will find which muffed punts were signaled for fair catch and which were not (i.e., they would be attempted to be returned).
+
+muffed_keys = punts_data[which(grepl("MUFFS",punts_data$PlayDescription)),]$key 
+
+muffed_punts.data = data.frame(key=c(),fc=c())
+
+for (i in 1:length(muffed_keys)){
+	ngs.tmp <- ngs.data[which(ngs.data$key == muffed_keys[i]),]
+	e = which(as.character(ngs.tmp$Event) == "fair_catch")
+	if (length(e) > 0){
+		muffed_punts.data = rbind(muffed_punts.data,data.frame(key=muffed_keys[i],fc = 1))
+	}else{
+		muffed_punts.data = rbind(muffed_punts.data,data.frame(key=muffed_keys[i],fc = 0))
+	}
+}
+
+muffed_inj_keys = injuries_data[which(grepl("MUFFS",injuries_data$PlayDescription)),]$key
+
+muffed_punts.data <- muffed_punts.data %>% mutate(inj = ifelse(as.character(key) %in% muffed_inj_keys,1,0))
+
+muffed_punts_fc = length(which(muffed_punts.data$fc == 1))
+muffed_punts_fc_inj = length(which(muffed_punts.data$fc == 1 & muffed_punts.data$inj == 1))
+muffed_punts_nfc = length(which(muffed_punts.data$fc == 0))
+muffed_punts_nfc_inj = length(which(muffed_punts.data$fc == 0 & muffed_punts.data$inj == 1))
+
+muffed_punts_fc.lower = c(prop.test(x=muffed_punts_fc_inj,n=muffed_punts_fc)$conf.int[1])
+muffed_punts_fc.upper = c(prop.test(x=muffed_punts_fc_inj,n=muffed_punts_fc)$conf.int[2])
+muffed_punts_nfc.lower = c(prop.test(x=muffed_punts_nfc_inj,n=muffed_punts_nfc)$conf.int[1])
+muffed_punts_nfc.upper = c(prop.test(x=muffed_punts_nfc_inj,n=muffed_punts_nfc)$conf.int[2])
+
+muffed.rates.dat <- data.frame(type=c("All Muffed","Muffed FC","Muffed Non-FC"),rate=c(muffed_injury/muffed_punts,muffed_punts_fc_inj/muffed_punts_fc,muffed_punts_nfc_inj/muffed_punts_nfc),lower = c(muffed_rate.lower,muffed_punts_fc.lower,muffed_punts_nfc.lower),upper=c(muffed_rate.upper,muffed_punts_fc.upper,muffed_punts_nfc.upper))
+
+# limiting the y-axis for visibility 
+
+ggplot(muffed.rates.dat,aes(type,100*rate))+geom_col()+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")+xlab("Punt Type")+ylim(c(0,5))
+
