@@ -1,6 +1,7 @@
 library(dplyr)
 library(qdapRegex)
 library(stringr)
+library(LearnGeom)
 
 player_play_punts <- read.csv("play_player_role_data.csv")
 injuries <- read.csv("video_review.csv")
@@ -54,6 +55,7 @@ ggplot(bar.data,aes(Type,Rate,fill=SampleSize))+geom_col()+geom_errorbar(aes(ymi
 
 aggr.data <- data.frame(Type = c("Returned","Non Returned"), Rate = c(100*((dim(injuries_data)[1]-(fc_injury+oob_injury+tback_injury+downed_injury))/(dim(punts_data)[1]-(fc_punts+oob_punts+tback_punts+downed_punts))),100*(fc_injury+oob_injury+tback_injury+downed_injury)/(fc_punts+oob_punts+tback_punts+downed_punts)), lower = c(100*prop.test(x=(dim(injuries_data)[1]-(fc_injury+oob_injury+tback_injury+downed_injury)),n=(dim(punts_data)[1]-(fc_punts+oob_punts+tback_punts+downed_punts)))$conf.int[1],100*prop.test(x=fc_injury+oob_injury+tback_injury+downed_injury,n=fc_punts+oob_punts+tback_punts+downed_punts)$conf.int[1]),upper = c(100*prop.test(x=(dim(injuries_data)[1]-(fc_injury+oob_injury+tback_injury+downed_injury)),n=(dim(punts_data)[1]-(fc_punts+oob_punts+tback_punts+downed_punts)))$conf.int[2],100*prop.test(x=fc_injury+oob_injury+tback_injury+downed_injury,n=fc_punts+oob_punts+tback_punts+downed_punts)$conf.int[2]))
 
+
 ggplot(aggr.data,aes(Type,Rate)+geom_col()+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")
 
 #### Extract the NGS for the returned punts and find y-coordinate at the time the returner receives the punt
@@ -80,7 +82,8 @@ for (i in 1:dim(punts_data)[1]){
 			pr = punts.roles.tmp[which(punts.roles.tmp$Role == "PR"),]$GSISID
 			# find his y-coord during the reception of the punt "punt_received"
 			y = ngs.tmp[which(as.integer(as.numeric(as.character(ngs.tmp$GSISID))) == pr & as.character(ngs.tmp$Event) == "punt_received"),]$y
-			if (length(as.numeric(as.character(y))) > 0){
+			if (length(as.numeric(as.character(y))) > 0){ # making sure the coordinates are not "NAs" -- just double checking to avoid cases where the punts 
+have not been correctly annotated 
 				loc.punt.rec <- rbind(loc.punt.rec,data.frame(key=punts_data[i,]$key,y=as.numeric(as.character(y))))
 			}
 		}
@@ -111,34 +114,6 @@ glm.plot <- data.frame(d=distance, prob = 100*predict(dsidinj.mod,newdata=data.f
 
 ggplot(glm.plot,aes(d,prob))+geom_line(color="blue")+geom_errorbar(aes(ymin=prob-se, ymax=prob+se), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ylab("Concussion Incident Probability of a Returned Punt(%)") + xlab("Distance from the closest sideline (yards)")
 
-
-#### Find what is the distribution of the punt return yardage (including fair catches, out-of-bounds etc.) -- we basically want to see currently what is the distribution of the yardage gained by returning a punt. While the location of the line of scrimmage is important here (e.g., punting to a short field gives lower chances of getting a good return), we just care for the "average" case.  in 1:dim(punts_data)[1]){This can be a support for the 5-yards rule we propose
-### NOTE: We do not account for any penalty that can push the line of scrimmage of the upcoming drive back
-
-return_yardage <- c()
-
-for (i in 1:dim(punts_data)[1]){
-
-	if (i %!in% ind){
-		if (str_detect(punts_data[i,]$PlayDescription,"for no gain")){
-			return_yardage <- append(return_yardage,0)
-		}else{
-			if (str_detect(punts_data[i,]$PlayDescription,"for \\d+ yards")){
-				y = as.numeric(rm_between(punts_data[i,]$PlayDescription,"\\sfor\\s ","\\syards",extract=TRUE)[[1]][1])
-				#y = as.numeric(sub(".*for *(.*?) *yards.*", "\\1", punts_data[i,]$PlayDescription))
-				return_yardage <- append(return_yardage,y)
-			}
-		}
-	}
-
-}
-
-
-return_yardage_all <- c(return_yardage,rep(0,length(ind)))
-
-return_yardage_all.df = data.frame(yrds = return_yardage_all)
-
-ggplot(return_yardage_all.df, aes(x=yrds)) + geom_histogram(color="black", fill="white",binwidth=2) + geom_vline(aes(xintercept=mean(yrds,na.rm=T)),color="blue", linetype="dashed", size=1) + theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ ylab("# of punts") + xlab("Return yardage")
 
 ### One of the possible "side-effects" is that a punt returner might try to catch on the fly more punts for a fair catch that other wise he would have let land and downed by the covering team. This might lead to more muffed punts so we need to examine what is the rate of concussions in muffed punts.
 
@@ -187,3 +162,46 @@ muffed.rates.dat <- data.frame(type=c("All Muffed","Muffed FC","Muffed Non-FC"),
 
 ggplot(muffed.rates.dat,aes(type,100*rate))+geom_col()+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")+xlab("Punt Type")+ylim(c(0,5))
 
+### Find the angle from the 0 degree line for the punts (returned, fair catches -- for downed punts we cannot really tell the angle since we do not know the place where the ball landed first, while for out of bounds punts we do not know which sideline they were out from) behind a team's own 30 yard line
+## Steps: find the punts of interest, find the location of the punter at the time of punt and the location of the punt returner at the time of fair-catch/punt reception
+
+ind.punt.RetFC <- c(which(grepl("out of bounds",punts_data$PlayDescription)), which(grepl("Touchback",punts_data$PlayDescription)),which(grepl("downed",punts_data$PlayDescription)))
+
+loc.punt.RetFC <- data.frame(key=c(),yrdline=c(),x1=c(),y1=c(),x2=c(),y2=c(),theta=c())
+
+## add an indicator in the punts_data on whether the punt is on the own territory behind the 30 yard line 
+
+punts_data = cbind(punts_data, read.table(text = as.character(punts_data$YardLine), sep = " "))
+punts_data <- punts_data %>% mutate(own30 = ifelse(as.numeric(punts_data$V2)<=30,1,0))
+
+for (i in 1:dim(punts_data)[1]){
+
+        if (i %!in% ind.punt.RetFC & punts_data[i,]$own30 == 1){
+
+                ngs.tmp <- ngs.data[which(ngs.data$key == punts_data[i,]$key),]
+                if ( dim(ngs.tmp)[1] > 0){
+                        # find the returner
+                        punts.roles.tmp <- player_play_punts[which(player_play_punts$key == punts_data[i,]$key),]
+                        pr = punts.roles.tmp[which(punts.roles.tmp$Role == "PR"),]$GSISID
+                        # find his xy-coord during the reception of the punt "punt_received" or the fair catch "fair_catch"
+                        x2 = ngs.tmp[which(as.integer(as.numeric(as.character(ngs.tmp$GSISID))) == pr & (as.character(ngs.tmp$Event) == "punt_received" |as.character(ngs.tmp$Event) == "fair_catch" )),]$x
+                        y2 = ngs.tmp[which(as.integer(as.numeric(as.character(ngs.tmp$GSISID))) == pr & (as.character(ngs.tmp$Event) == "punt_received"|as.character(ngs.tmp$Event) == "fair_catch" )),]$y
+			# find the punter 
+			punter = punts.roles.tmp[which(punts.roles.tmp$Role == "P"),]$GSISID
+			# find his xy-coord during the punt (Event: "punt")
+			x1 = ngs.tmp[which(as.integer(as.numeric(as.character(ngs.tmp$GSISID))) == punter & as.character(ngs.tmp$Event) == "punt"),]$x
+			y1 = ngs.tmp[which(as.integer(as.numeric(as.character(ngs.tmp$GSISID))) == punter & as.character(ngs.tmp$Event) == "punt"),]$y
+                        if (length(as.numeric(as.character(y1))) > 0 & length(as.numeric(as.character(y2))) ){ # making sure the coordinates are not "NAs" -- just double checking to avoid cases where the punts have not been correctly annotated 
+				# find the angle between the straight line defined by the 0 degree line from the punter [(x1,y1),(x2,y1)] and the actual line of the punt [(x1,y1),(x2,y2)]
+				A = c(as.numeric(as.character(x2)),as.numeric(as.character(y2)))
+				B = c(as.numeric(as.character(x1)),as.numeric(as.character(y1)))
+				C = c(as.numeric(as.character(x2)),as.numeric(as.character(y1)))
+				theta = Angle(A, B,C)[[1]]
+                                loc.punt.RetFC <- rbind(loc.punt.RetFC,data.frame(key=punts_data[i,]$key,yrdline=as.numeric(punts_data[i,]$V2),x1=as.numeric(as.character(x1)),y1=as.numeric(as.character(y1)),x2=as.numeric(as.character(x2)),y2=as.numeric(as.character(y2)),theta=theta))
+                        }
+
+                }
+
+        }
+
+}
