@@ -2,6 +2,7 @@ library(dplyr)
 library(qdapRegex)
 library(stringr)
 library(LearnGeom)
+library(latex2exp)
 
 player_play_punts <- read.csv("play_player_role_data.csv")
 injuries <- read.csv("video_review.csv")
@@ -115,6 +116,34 @@ glm.plot <- data.frame(d=distance, prob = 100*predict(dsidinj.mod,newdata=data.f
 ggplot(glm.plot,aes(d,prob))+geom_line(color="blue")+geom_errorbar(aes(ymin=prob-se, ymax=prob+se), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ylab("Concussion Incident Probability of a Returned Punt(%)") + xlab("Distance from the closest sideline (yards)")
 
 
+#### Find what is the distribution of the punt return yardage (including fair catches, out-of-bounds etc.) -- we basically want to see currently what is the distribution of the yardage gained by returning a punt. While the location of the line of scrimmage is important here (e.g., punting to a short field gives lower chances of getting a good return), we just care for the "average" case.  in 1:dim(punts_data)[1]){This can be a support for the 5-yards rule we propose
+### NOTE: We do not account for any penalty that can push the line of scrimmage of the upcoming drive back
+
+return_yardage <- c()
+
+for (i in 1:dim(punts_data)[1]){
+
+	if (i %!in% ind){
+		if (str_detect(punts_data[i,]$PlayDescription,"for no gain")){
+			return_yardage <- append(return_yardage,0)
+		}else{
+			if (str_detect(punts_data[i,]$PlayDescription,"for \\d+ yards")){
+				y = as.numeric(rm_between(punts_data[i,]$PlayDescription,"\\sfor\\s ","\\syards",extract=TRUE)[[1]][1])
+				#y = as.numeric(sub(".*for *(.*?) *yards.*", "\\1", punts_data[i,]$PlayDescription))
+				return_yardage <- append(return_yardage,y)
+			}
+		}
+	}
+
+}
+
+# add the fair catches
+return_yardage_all <- c(return_yardage,rep(0,length(ind)))
+
+return_yardage_all.df = data.frame(yrds = return_yardage_all)
+
+ggplot(return_yardage_all.df, aes(x=yrds)) + geom_histogram(color="black", fill="white",binwidth=2) + geom_vline(aes(xintercept=mean(yrds,na.rm=T)),color="blue", linetype="dashed", size=1) + theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ ylab("# of punts") + xlab("Return yardage")
+
 ### One of the possible "side-effects" is that a punt returner might try to catch on the fly more punts for a fair catch that other wise he would have let land and downed by the covering team. This might lead to more muffed punts so we need to examine what is the rate of concussions in muffed punts.
 
 muffed_punts = length(which(grepl("MUFFS",punts_data$PlayDescription)))
@@ -205,3 +234,62 @@ for (i in 1:dim(punts_data)[1]){
         }
 
 }
+
+
+### we want to get an estimate of the number of injuries that will be prevented by this rule
+## we will perform simulations based on assumptions for the percentage of punts to not be returned and for the closeness to the sideline of the kicks that will be returned 
+## this will provide us with a range of possibilities and then we can obtain a fairly realistic view of what to expect
+## Currently ~47% of the punts are returned
+
+reduction_rate = c(0.05,0.1,0.15,0.2) # this is an assumed reduction rate for the returned punts. Realistically we should not expect more than 20% reduction
+yards_closer = c(1,2.5,5,7.5,10) # this is the assumed expected shift of the punt towards the sideline. Assume a normal distribution with variance 7 yards (this is the variance of the sideline distance in the punts observed) 
+
+punts_returned = dim(punts_data)[1]-(fc_punts+oob_punts+tback_punts+downed_punts)
+punts_notreturned = fc_punts+oob_punts+tback_punts+downed_punts
+
+injuries_simulations = data.frame(red_rate = c(),yrds_closer = c(), xCR = c())
+
+for (r in reduction_rate){
+
+	for (y in yards_closer){
+			
+		# for each pair of these variables we will perform bootstrap simulations
+		# we will bootstrap the distribution of the distances from the sidelines for the punts that are still returned
+		# we will assume 1,000 punts and we will identify the number of concussions expected "per 1,000 exposures"
+		# under no rule change we expect 47% of the punts to be returned -- this is the baseline rate (punts_returned/(punts_returned+punts+_notreturned))
+		# first we will identify how many punts are going to be returned from the 1,000 
+		xPR = 470 - round(r*470)
+		xNPR = 530 + round(r*470)
+		# first we have to deal with the expected concussions from non-returned punts
+		# we will assume that the xNPR punts includes all the different types (i.e., out-of-bounds, touchback etc.) at the same proportion as the original sample 
+		# we will use the concussion rate for each of these types of non-returned punts to estimate the expected number of concussions
+		# downed
+		xInjDowned = (downed_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR*0.01*bar.data[4,]$Rate # the rates are already expressed in % so we need to multiply with 0.01
+		# out-of-bounds
+		xInjOob = (oob_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR*0.01*bar.data[2,]$Rate
+		# touchbacks
+		xInjTback = (tback_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR*0.01*bar.data[3,]$Rate
+		# fair catch 
+		xInkFC = (fc_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR*0.01*bar.data[1,]$Rate
+		# bootstrap the returned punts 
+		boot_samples = rep(0,500)
+		for (b in 1:500){
+			returned_dis_sim = sample(d.side$d,xPR,replace=T)-rnorm(xPR,y,7)
+			returned_dis_sim[which(returned_dis_sim<0)] = 1
+			returned_dis_sim[which(returned_dis_sim>26)] = 26
+			xInjRet = sum(predict(dsidinj.mod,newdata=data.frame(d=returned_dis_sim),type="response"))
+			boot_samples[b] = xInjRet
+		}
+		xInjRet = mean(boot_samples)
+		injuries_simulations <- rbind(injuries_simulations,data.frame(red_rate = r, yrds_closer= y,xCR = xInjDowned+xInjOob+xInjTback+xInkFC+xInjRet))
+		
+
+	}
+
+} 
+
+current_concussion_rate_per1Kexposures = (dim(injuries)[1]/dim(punts_data)[1])*1000
+
+injuries_simulations$yrds_closer = as.factor(injuries_simulations$yrds_closer)
+
+ggplot(injuries_simulations, aes(x = red_rate, y = xCR,color=yrds_closer))+geom_line() + geom_hline(yintercept=current_concussion_rate_per1Kexposures)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("# of Concussions per 1,000 Exposures (Punts)")+xlab(TeX("r"))+scale_color_manual(TeX("$s_d$"),values=c("blue","brown","red","orange","purple"))
