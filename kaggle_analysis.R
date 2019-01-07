@@ -48,9 +48,11 @@ samples = c(fc_punts,oob_punts,tback_punts,downed_punts,(dim(punts_data)[1]-(fc_
 
 bar.data <- data.frame(Type=type,Rate=rate,lower = rate.lower, upper = rate.upper, SampleSize = samples)
 
-blue.bold.16 = element_text(face = "bold", color = "blue", size = 16)
-ggplot(bar.data,aes(Type,Rate,fill=SampleSize))+geom_col()+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")
+#blue.bold.16 = element_text(face = "bold", color = "blue", size = 16)
+#ggplot(bar.data,aes(Type,Rate,fill=SampleSize))+geom_col()+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")
 
+#ggplot(bar.data,aes(Type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Different Types of Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+geom_text(aes(label=SampleSize),vjust=-0.25)
+ggplot(bar.data,aes(Type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Different Types of Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+geom_text(aes(label=SampleSize),vjust=-0.35,hjust = 1.5)
 
 ## Aggregate returned/non-returned
 
@@ -59,7 +61,7 @@ aggr.data <- data.frame(Type = c("Returned","Non Returned"), Rate = c(100*((dim(
 
 #ggplot(aggr.data,aes(Type,Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")
 
-ggplot(aggr.data,aes(Type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Different Types of Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)
+ggplot(aggr.data,aes(Type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=lower, ymax=upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Returned and Not-Returned Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)
 
 #### Extract the NGS for the returned punts and find y-coordinate at the time the returner receives the punt
 '%!in%' <- function(x,y)!('%in%'(x,y))
@@ -115,8 +117,9 @@ distance <- c(0:25)
 glm.plot <- data.frame(d=distance, prob = 100*predict(dsidinj.mod,newdata=data.frame(d=distance),type="response"),se = 100*predict(dsidinj.mod,newdata=data.frame(d=distance),type="response",se=T)$se.fit)
 
 
-ggplot(glm.plot,aes(d,prob))+geom_line(color="blue")+geom_errorbar(aes(ymin=prob-se, ymax=prob+se), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ylab("Concussion Incident Probability of a Returned Punt(%)") + xlab("Distance from the closest sideline (yards)")
-
+#ggplot(glm.plot,aes(d,prob))+geom_line(color="blue")+geom_errorbar(aes(ymin=prob-se, ymax=prob+se), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"))+ylab("Concussion Incident Probability of a Returned Punt(%)") + xlab("Distance from the closest sideline (yards)")
+annotations <- data.frame(loc = c(13,22),type=c("Numbers","Hashmarks"))
+ggplot(glm.plot,aes(d,prob))+geom_line(color="blue")+geom_errorbar(aes(ymin=prob-se, ymax=prob+se), colour="black", width=.1)+labs(x="Distance from the closest sideline (yards)",y="Concussion Incident Probability of a Returned Punt(%)",title="Concussion Probability Based on the Distance from the Nearest Sideline",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+geom_vline(data=annotations, mapping=aes(xintercept=loc), color="red",linetype="dashed")+geom_text(data=annotations, mapping=aes(x=loc, y=0, label=type), size=6, angle=90, vjust=-0.4, hjust=0)
 
 #### Find what is the distribution of the punt return yardage (including fair catches, out-of-bounds etc.) -- we basically want to see currently what is the distribution of the yardage gained by returning a punt. While the location of the line of scrimmage is important here (e.g., punting to a short field gives lower chances of getting a good return), we just care for the "average" case.  in 1:dim(punts_data)[1]){This can be a support for the 5-yards rule we propose
 ### NOTE: We do not account for any penalty that can push the line of scrimmage of the upcoming drive back
@@ -290,8 +293,10 @@ for (r in reduction_rate){
 
 } 
 
+
 current_concussion_rate_per1Kexposures = (dim(injuries)[1]/dim(punts_data)[1])*1000
 
 injuries_simulations$yrds_closer = as.factor(injuries_simulations$yrds_closer)
 
-ggplot(injuries_simulations, aes(x = red_rate, y = xCR,color=yrds_closer))+geom_line() + geom_hline(yintercept=current_concussion_rate_per1Kexposures)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("# of Concussions per 1,000 Exposures (Punts)")+xlab(TeX("r"))+scale_color_manual(TeX("$s_d$"),values=c("blue","brown","red","orange","purple"))
+#ggplot(injuries_simulations, aes(x = red_rate, y = xCR,color=yrds_closer))+geom_line() + geom_hline(yintercept=current_concussion_rate_per1Kexposures)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("# of Concussions per 1,000 Exposures (Punts)")+xlab(TeX("r"))+scale_color_manual(TeX("$s_d$"),values=c("blue","brown","red","orange","purple"))
+ggplot(injuries_simulations, aes(x = red_rate, y = xCR,color=yrds_closer))+geom_line(size=2) + geom_hline(yintercept=current_concussion_rate_per1Kexposures,linetype="dashed",size=2)+scale_color_manual(TeX("$s_d$"),values=c("blue","brown","red","orange","purple"))+labs(x=TeX("r"),y="# of Concussions per 1,000 Exposures (Punts)",title="Our Suggested Rule Changes Expected Impact on Concussion Rates",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+geom_text(mapping=aes(x=0.075, y=5.6, label="Current # of Concussions per 1,000 Exposures"), size=6,hjust=0,vjust=-0.05,color="black")
