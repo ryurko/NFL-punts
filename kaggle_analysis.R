@@ -192,9 +192,11 @@ muffed_punts_nfc.upper = c(prop.test(x=muffed_punts_nfc_inj,n=muffed_punts_nfc)$
 
 muffed.rates.dat <- data.frame(type=c("All Muffed","Muffed FC","Muffed Non-FC"),rate=c(muffed_injury/muffed_punts,muffed_punts_fc_inj/muffed_punts_fc,muffed_punts_nfc_inj/muffed_punts_nfc),lower = c(muffed_rate.lower,muffed_punts_fc.lower,muffed_punts_nfc.lower),upper=c(muffed_rate.upper,muffed_punts_fc.upper,muffed_punts_nfc.upper))
 
+ggplot(muffed.rates.dat,aes(type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Muffed Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Different Types of Muffed Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+ylim(c(0,5))
+
 # limiting the y-axis for visibility 
 
-ggplot(muffed.rates.dat,aes(type,100*rate))+geom_col()+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")+xlab("Punt Type")+ylim(c(0,5))
+#ggplot(muffed.rates.dat,aes(type,100*rate))+geom_col()+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("Concussion Rate (%)")+xlab("Punt Type")+ylim(c(0,5))
 
 ### Find the angle from the 0 degree line for the punts (returned, fair catches -- for downed punts we cannot really tell the angle since we do not know the place where the ball landed first, while for out of bounds punts we do not know which sideline they were out from) behind a team's own 30 yard line
 ## Steps: find the punts of interest, find the location of the punter at the time of punt and the location of the punt returner at the time of fair-catch/punt reception
@@ -293,6 +295,53 @@ for (r in reduction_rate){
 
 } 
 
+
+##### SECOND Simulation where the "Extra" punts not returned as part of our incentive are either out-of-bounds or fair catches
+
+for (r in reduction_rate){
+
+        for (y in yards_closer){
+
+                # for each pair of these variables we will perform bootstrap simulations
+                # we will bootstrap the distribution of the distances from the sidelines for the punts that are still returned
+                # we will assume 1,000 punts and we will identify the number of concussions expected "per 1,000 exposures"
+                # under no rule change we expect 47% of the punts to be returned -- this is the baseline rate (punts_returned/(punts_returned+punts+_notreturned))
+                # first we will identify how many punts are going to be returned from the 1,000 
+                xPR = 470 - round(r*470)
+                xNPR_base = 530 
+		xNPR_extra = round(r*470)
+                # first we have to deal with the expected concussions from non-returned punts
+                # we will assume that the xNPR punts includes all the different types (i.e., out-of-bounds, touchback etc.) at the same proportion as the original sample 
+                # we will use the concussion rate for each of these types of non-returned punts to estimate the expected number of concussions
+                # downed
+                xInjDowned = (downed_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[4,]$Rate # the rates are already expressed in % so we need to multiply with 0.01
+                # out-of-bounds
+                xInjOob = (oob_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[2,]$Rate
+                # touchbacks
+                xInjTback = (tback_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[3,]$Rate
+                # fair catch 
+                xInkFC = (fc_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[1,]$Rate
+		## for fair catch and out-of-bounds we add the extra punts
+		xInjOob = xInjOob+(oob_punts/(fc_punts+oob_punts))*xNPR_extra*0.01*bar.data[2,]$Rate
+		xInkFC = xInkFC+(fc_punts/(fc_punts+oob_punts))*xNPR_extra*0.01*bar.data[1,]$Rate
+                # bootstrap the returned punts 
+                boot_samples = rep(0,500)
+                for (b in 1:500){
+                        returned_dis_sim = sample(d.side$d,xPR,replace=T)-rnorm(xPR,y,7)
+                        returned_dis_sim[which(returned_dis_sim<0)] = 1
+                        returned_dis_sim[which(returned_dis_sim>26)] = 26
+                        xInjRet = sum(predict(dsidinj.mod,newdata=data.frame(d=returned_dis_sim),type="response"))
+                        boot_samples[b] = xInjRet
+                }
+                xInjRet = mean(boot_samples)
+                injuries_simulations <- rbind(injuries_simulations,data.frame(red_rate = r, yrds_closer= y,xCR = xInjDowned+xInjOob+xInjTback+xInkFC+xInjRet))
+
+
+        }
+
+}
+
+#### END of SECOND simulation
 
 current_concussion_rate_per1Kexposures = (dim(injuries)[1]/dim(punts_data)[1])*1000
 
