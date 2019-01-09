@@ -70,6 +70,19 @@ ggplot(aggr.data,aes(Type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar
 # the NGS_punts.csv is a big file with all the NGS data. You can create this through a cat command: "cat NGS-201* > NGS_punts.csv"
 ngs.data <- read.csv("NGS_punts.csv")
 
+# or 
+
+NGS_files = list.files(pattern = "NGS*")
+
+ngs.data = read.csv(NGS_files[1])
+
+for (i in 2:length(NGS_files)){
+
+	ngs.tmp.f = read.csv(NGS_files[i])
+	ngs.data <- rbind(ngs.data,ngs.tmp.f)
+
+}
+
 ngs.data$key = paste0(ngs.data$GameKey,"-",ngs.data$PlayID)
 
 ind <- c(which(grepl("fair catch",punts_data$PlayDescription)), which(grepl("out of bounds",punts_data$PlayDescription)), which(grepl("Touchback",punts_data$PlayDescription)),which(grepl("downed",punts_data$PlayDescription)))
@@ -192,7 +205,7 @@ muffed_punts_nfc.upper = c(prop.test(x=muffed_punts_nfc_inj,n=muffed_punts_nfc)$
 
 muffed.rates.dat <- data.frame(type=c("All Muffed","Muffed FC","Muffed Non-FC"),rate=c(muffed_injury/muffed_punts,muffed_punts_fc_inj/muffed_punts_fc,muffed_punts_nfc_inj/muffed_punts_nfc),lower = c(muffed_rate.lower,muffed_punts_fc.lower,muffed_punts_nfc.lower),upper=c(muffed_rate.upper,muffed_punts_fc.upper,muffed_punts_nfc.upper))
 
-ggplot(muffed.rates.dat,aes(type,Rate,fill=Rate))+geom_col(color="black")+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Muffed Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Different Types of Muffed Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+ylim(c(0,5))
+ggplot(muffed.rates.dat,aes(type,rate,fill=rate))+geom_col(color="black")+geom_errorbar(aes(ymin=100*lower, ymax=100*upper), colour="black", width=.1)+scale_fill_gradient(low="grey",high="red")+labs(x="Muffed Punt Type",y="Concussion Rate (%)",title="Concussion Rates (%) for Different Types of Muffed Punts",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+ylim(c(0,5))
 
 # limiting the y-axis for visibility 
 
@@ -233,7 +246,7 @@ for (i in 1:dim(punts_data)[1]){
 				B = c(as.numeric(as.character(x1)),as.numeric(as.character(y1)))
 				C = c(as.numeric(as.character(x2)),as.numeric(as.character(y1)))
 				theta = Angle(A, B,C)[[1]]
-                                loc.punt.RetFC <- rbind(loc.punt.RetFC,data.frame(key=punts_data[i,]$key,yrdline=as.numeric(punts_data[i,]$V2),x1=as.numeric(as.character(x1)),y1=as.numeric(as.character(y1)),x2=as.numeric(as.character(x2)),y2=as.numeric(as.character(y2)),theta=theta))
+                                loc.punt.RetFC <- rbind(loc.punt.RetFC,data.frame(key=punts_data[i,]$key,yrdline=as.numeric(punts_data[i,]$V2),x1=as.numeric(as.character(x1)),y1=as.numeric(as.character(y1)),x2=as.numeric(as.character(x2)),y2=as.numeric(as.character(y2)),theta=theta,yrdline = as.numeric(punts_data[i,]$V2)))
                         }
 
                 }
@@ -249,7 +262,7 @@ for (i in 1:dim(punts_data)[1]){
 ## Currently ~47% of the punts are returned
 
 reduction_rate = c(0.05,0.1,0.15,0.2) # this is an assumed reduction rate for the returned punts. Realistically we should not expect more than 20% reduction
-yards_closer = c(1,2.5,5,7.5,10) # this is the assumed expected shift of the punt towards the sideline. Assume a normal distribution with variance 7 yards (this is the variance of the sideline distance in the punts observed) 
+yards_closer = c(2.5,5,7.5,10) # this is the assumed expected shift of the punt towards the sideline. Assume a normal distribution with variance 7 yards (this is the variance of the sideline distance in the punts observed) 
 
 punts_returned = dim(punts_data)[1]-(fc_punts+oob_punts+tback_punts+downed_punts)
 punts_notreturned = fc_punts+oob_punts+tback_punts+downed_punts
@@ -296,35 +309,18 @@ for (r in reduction_rate){
 } 
 
 
-##### SECOND Simulation where the "Extra" punts not returned as part of our incentive are either out-of-bounds or fair catches
+##### SECOND Simulation where I consider the uncertainty (lower/upper bars for returned and non-returned punts
+
+#expected concussions 
+
+injuries_simulations_exp = data.frame(red_rate = c(),yrds_closer = c(), xCR = c())
 
 for (r in reduction_rate){
 
         for (y in yards_closer){
-
-                # for each pair of these variables we will perform bootstrap simulations
-                # we will bootstrap the distribution of the distances from the sidelines for the punts that are still returned
-                # we will assume 1,000 punts and we will identify the number of concussions expected "per 1,000 exposures"
-                # under no rule change we expect 47% of the punts to be returned -- this is the baseline rate (punts_returned/(punts_returned+punts+_notreturned))
-                # first we will identify how many punts are going to be returned from the 1,000 
                 xPR = 470 - round(r*470)
-                xNPR_base = 530 
-		xNPR_extra = round(r*470)
-                # first we have to deal with the expected concussions from non-returned punts
-                # we will assume that the xNPR punts includes all the different types (i.e., out-of-bounds, touchback etc.) at the same proportion as the original sample 
-                # we will use the concussion rate for each of these types of non-returned punts to estimate the expected number of concussions
-                # downed
-                xInjDowned = (downed_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[4,]$Rate # the rates are already expressed in % so we need to multiply with 0.01
-                # out-of-bounds
-                xInjOob = (oob_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[2,]$Rate
-                # touchbacks
-                xInjTback = (tback_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[3,]$Rate
-                # fair catch 
-                xInkFC = (fc_punts/(downed_punts+fc_punts+tback_punts+oob_punts))*xNPR_base*0.01*bar.data[1,]$Rate
-		## for fair catch and out-of-bounds we add the extra punts
-		xInjOob = xInjOob+(oob_punts/(fc_punts+oob_punts))*xNPR_extra*0.01*bar.data[2,]$Rate
-		xInkFC = xInkFC+(fc_punts/(fc_punts+oob_punts))*xNPR_extra*0.01*bar.data[1,]$Rate
-                # bootstrap the returned punts 
+                xNPR = 530 + round(r*470) 
+		xInjNPR = aggr.data[2,]$Rate*0.01*xNPR
                 boot_samples = rep(0,500)
                 for (b in 1:500){
                         returned_dis_sim = sample(d.side$d,xPR,replace=T)-rnorm(xPR,y,7)
@@ -334,8 +330,61 @@ for (r in reduction_rate){
                         boot_samples[b] = xInjRet
                 }
                 xInjRet = mean(boot_samples)
-                injuries_simulations <- rbind(injuries_simulations,data.frame(red_rate = r, yrds_closer= y,xCR = xInjDowned+xInjOob+xInjTback+xInkFC+xInjRet))
+                injuries_simulations_exp <- rbind(injuries_simulations_exp,data.frame(red_rate = r, yrds_closer= y,xCR = xInjNPR+xInjRet))
 
+        }
+
+}
+
+
+# upper bound
+# we will use the upper bound for the rate of the non-returned and the lower-rate for the returned
+
+injuries_simulations_upp= data.frame(red_rate = c(),yrds_closer = c(), xCR = c())
+
+for (r in reduction_rate){
+
+        for (y in yards_closer){
+                xPR = 470 - round(r*470)
+                xNPR = 530 + round(r*470)
+                xInjNPR = aggr.data[2,]$upper*0.01*xNPR
+                boot_samples = rep(0,500)
+                for (b in 1:500){
+                        returned_dis_sim = sample(d.side$d,xPR,replace=T)-rnorm(xPR,y,7)
+                        returned_dis_sim[which(returned_dis_sim<0)] = 1
+                        returned_dis_sim[which(returned_dis_sim>26)] = 26
+                        xInjRet = sum(predict(dsidinj.mod,newdata=data.frame(d=returned_dis_sim),type="response")+predict(dsidinj.mod,newdata=data.frame(d=returned_dis_sim),type="response",se.fit=T)$se.fit)
+                        boot_samples[b] = xInjRet
+                }
+                xInjRet = mean(boot_samples)
+                injuries_simulations_upp <- rbind(injuries_simulations_upp,data.frame(red_rate = r, yrds_closer= y,xCR = xInjNPR+xInjRet))
+
+        }
+
+}
+
+
+# lower bound
+# we will use the lower bound for the rate of the non-returned and the upper-rate for the returned
+
+injuries_simulations_low= data.frame(red_rate = c(),yrds_closer = c(), xCR = c())
+
+for (r in reduction_rate){
+
+        for (y in yards_closer){
+                xPR = 470 - round(r*470)
+                xNPR = 530 + round(r*470)
+                xInjNPR = aggr.data[2,]$lower*0.01*xNPR
+                boot_samples = rep(0,500)
+                for (b in 1:500){
+                        returned_dis_sim = sample(d.side$d,xPR,replace=T)-rnorm(xPR,y,7)
+                        returned_dis_sim[which(returned_dis_sim<0)] = 1
+                        returned_dis_sim[which(returned_dis_sim>26)] = 26
+                        xInjRet = sum(predict(dsidinj.mod,newdata=data.frame(d=returned_dis_sim),type="response")-predict(dsidinj.mod,newdata=data.frame(d=returned_dis_sim),type="response",se.fit=T)$se.fit)
+                        boot_samples[b] = xInjRet
+                }
+                xInjRet = mean(boot_samples)
+                injuries_simulations_low <- rbind(injuries_simulations_low,data.frame(red_rate = r, yrds_closer= y,xCR = xInjNPR+xInjRet))
 
         }
 
@@ -345,7 +394,11 @@ for (r in reduction_rate){
 
 current_concussion_rate_per1Kexposures = (dim(injuries)[1]/dim(punts_data)[1])*1000
 
-injuries_simulations$yrds_closer = as.factor(injuries_simulations$yrds_closer)
+#injuries_simulations$yrds_closer = as.factor(injuries_simulations$yrds_closer)
+
+injuries_simulations = injuries_simulations[which(injuries_simulations$red_rate == injuries_simulations[1,]$red_rate),]
+ggplot(injuries_simulations, aes(x = yrds_closer))+geom_line(aes(y=xCR),size=2,color="red")+geom_line(aes(y=lower),size=2,color="brown",linetype="dashed") + geom_hline(yintercept=current_concussion_rate_per1Kexposures,linetype="dashed",size=2)+labs(x=TeX("$s_d$"),y="# of Concussions per 1,000 Exposures (Punts)",title="Our Suggested Rule Changes Expected Impact on Concussion Rates",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+geom_text(mapping=aes(x=2.075, y=5.6, label="Current # of Concussions per 1,000 Exposures"), size=6,hjust=0,vjust=-0.05,color="black")+xlim(2,11)+geom_text(mapping=aes(x=3.5, y=4, label="This is the region of possible conussion rates to be observed with our suggested rule change"), size=6,hjust=0,vjust=-0.05,color="black")+geom_text(mapping=aes(x=3.5,y = 5.1,label="This is the expected number of concussions per 1,000 exposures with our suggested rule change"), size=6,hjust=0,vjust=-0.05,color="red")+geom_text(mapping=aes(x=3.5,y = 2.4,label="This is a conservative lower bound number of concussions per 1,000 exposures with our suggested rule change"), size=6,hjust=0,vjust=-0.05,color="brown")
+
 
 #ggplot(injuries_simulations, aes(x = red_rate, y = xCR,color=yrds_closer))+geom_line() + geom_hline(yintercept=current_concussion_rate_per1Kexposures)+theme(axis.text.x = blue.bold.16,axis.text.y = blue.bold.16,axis.title=element_text(size=16,face="bold"),legend.title=blue.bold.16)+ylab("# of Concussions per 1,000 Exposures (Punts)")+xlab(TeX("r"))+scale_color_manual(TeX("$s_d$"),values=c("blue","brown","red","orange","purple"))
 ggplot(injuries_simulations, aes(x = red_rate, y = xCR,color=yrds_closer))+geom_line(size=2) + geom_hline(yintercept=current_concussion_rate_per1Kexposures,linetype="dashed",size=2)+scale_color_manual(TeX("$s_d$"),values=c("blue","brown","red","orange","purple"))+labs(x=TeX("r"),y="# of Concussions per 1,000 Exposures (Punts)",title="Our Suggested Rule Changes Expected Impact on Concussion Rates",caption="Pelechrinis, Yurko, Ventura (2019)")+theme_bw(base_size=17)+geom_text(mapping=aes(x=0.075, y=5.6, label="Current # of Concussions per 1,000 Exposures"), size=6,hjust=0,vjust=-0.05,color="black")
